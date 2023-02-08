@@ -5,6 +5,7 @@ using Domain.Entities;
 using Domain.Enums;
 using MediatR;
 using System;
+using System.Collections.Generic;
 using System.ComponentModel.DataAnnotations;
 using System.Linq;
 using System.Text;
@@ -16,6 +17,11 @@ namespace Application.Commands.AddNewUser
     public class AddNewUserCommandHandler : IRequestHandler<AddNewUserCommand, bool>
     {
         private readonly IMediator _mediator;
+        private readonly IDictionary<UserType, Type> _userTypesStg = new Dictionary<UserType, Type>() { 
+            { UserType.NORMAL, typeof(NormalTypeStg) }, 
+            { UserType.PREMIUM, typeof(PremiumTypeStg) }, 
+            { UserType.SUPER_USER, typeof(SuperUserTypeStg) } 
+        };
         public AddNewUserCommandHandler(IMediator mediator)
         {
             _mediator = mediator;
@@ -37,15 +43,16 @@ namespace Application.Commands.AddNewUser
                 throw new ValidationException(message.ToString());
             }
 
-            IUserTypeStrategy stg = request.User.Type switch
-            {
-                UserType.NORMAL => new NormalTypeStg(),
-                UserType.SUPER_USER => new SuperUserTypeStg(),
-                UserType.PREMIUM => new PremiumTypeStg(),
-                _ => throw new ValidationException("A valid user type is required"),
-            };
+            var stgKeyValue = _userTypesStg.FirstOrDefault(x => x.Key == request.User.Type);
 
-            stg.Execute(request.User);
+            if(stgKeyValue.Value is null)
+            {
+                throw new ValidationException("The user type value is incorrect or the strategy is not well configured.");
+            }
+
+            var stgInstance = (IUserTypeStrategy) Activator.CreateInstance(stgKeyValue.Value);
+
+            stgInstance.Execute(request.User);
 
             if (await IsDuplicated(request.User))
             {
